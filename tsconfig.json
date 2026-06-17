@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    
     "target": "ES2022",
     "module": "CommonJS",
     "lib": ["ES2022"],
@@ -17,6 +18,7 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "moduleResolution": "node",
+    "ignoreDeprecations": "6.0",
     "esModuleInterop": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
