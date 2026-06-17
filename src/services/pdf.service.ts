@@ -1,16 +1,37 @@
-import puppeteer from 'puppeteer';
 import path from 'path';
 import fs from 'fs';
 import { IInvoice, ITemplate } from '../types';
 import { InvoiceRepository } from '../repositories/invoice.repository';
 
+const dynamicImport = (modulePath: string) => eval(`import('${modulePath}')`);
+
 export class PdfService {
   private invoiceRepository = new InvoiceRepository();
 
+  private async getLaunchOptions() {
+    const isProd = process.env.NODE_ENV === 'production';
+
+    if (isProd) {
+      const chromium = (await dynamicImport('@sparticuz/chromium')).default;
+      return {
+        args: chromium.args,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      };
+    }
+
+    return {
+      executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    };
+  }
+
   async generateInvoicePdf(invoice: IInvoice, template: ITemplate): Promise<string> {
+    const puppeteer = (await dynamicImport('puppeteer-core')).default;
+
     const htmlContent = this.buildHtmlContent(invoice, template);
-    
-    // Create output folder if it doesn't exist
+
     const pdfsDir = path.join(__dirname, '../../uploads/pdfs');
     if (!fs.existsSync(pdfsDir)) {
       fs.mkdirSync(pdfsDir, { recursive: true });
@@ -19,29 +40,20 @@ export class PdfService {
     const fileName = `invoice-${invoice._id}.pdf`;
     const outputPath = path.join(pdfsDir, fileName);
 
-    // Launch puppeteer
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    const launchOptions = await this.getLaunchOptions();
+    const browser = await puppeteer.launch(launchOptions);
 
     try {
       const page = await browser.newPage();
       await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
 
-      // Generate PDF
       await page.pdf({
         path: outputPath,
         format: 'A4',
         printBackground: true,
-        margin: {
-          top: '40px',
-          bottom: '50px',
-          left: '40px',
-          right: '40px',
-        },
+        margin: { top: '40px', bottom: '50px', left: '40px', right: '40px' },
         displayHeaderFooter: true,
-        headerTemplate: '<div></div>', // Empty header, we render logo inside body
+        headerTemplate: '<div></div>',
         footerTemplate: `
           <div style="font-family: Arial, sans-serif; font-size: 8px; color: #888888; width: 100%; display: flex; justify-content: space-between; padding: 0 40px; box-sizing: border-box;">
             <span>Generated via ${template.companyName}</span>
@@ -50,7 +62,6 @@ export class PdfService {
         `,
       });
 
-      // Update invoice document with PDF path
       const relativePath = `/uploads/pdfs/${fileName}`;
       await this.invoiceRepository.update(invoice._id.toString(), invoice.userId.toString(), {
         pdfPath: relativePath,
@@ -63,7 +74,7 @@ export class PdfService {
     }
   }
 
-  private buildHtmlContent(invoice: IInvoice, template: ITemplate): string {
+ private buildHtmlContent(invoice: IInvoice, template: ITemplate): string {
     const primaryColor = template.primaryColor || '#1e3a8a';
     const secondaryColor = template.secondaryColor || '#3b82f6';
     const logoHtml = template.logoUrl 
